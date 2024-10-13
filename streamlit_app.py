@@ -15,6 +15,13 @@ if 'result_text_global' not in st.session_state:
 if 'default_values' not in st.session_state:
     st.session_state.default_values = []
 
+if 'cancel_search' not in st.session_state:
+    st.session_state.cancel_search = False
+
+# Function to cancel the search
+def cancel_search():
+    st.session_state.cancel_search = True
+
 # Function to display help content based on uploaded files
 def open_help_window(help_type, help_files):
     help_file_names = {
@@ -182,14 +189,19 @@ def reorder_date_file_writer(result_text):
         sorted_result_text += file + "\n"
     return sorted_result_text
 
-# Function to perform the search
+# Function to perform the search with cancellation support
 def perform_search(file_list_text, search_term):
+    st.session_state.cancel_search = False
     lines = file_list_text.strip().split("\n")
     parsed_data = []
     current_author = None
     current_date = None
 
     for line in lines:
+        if st.session_state.cancel_search:
+            st.session_state.searching = False
+            return "Search cancelled.\n"
+
         if 'Date:' in line:
             author_date_match = re.match(r"(.+), Date: (.+)", line)
             if author_date_match:
@@ -199,28 +211,17 @@ def perform_search(file_list_text, search_term):
             parsed_data.append([current_author, current_date, line])
 
     df = pd.DataFrame(parsed_data, columns=['author', 'date', 'file'])
-    file_list = df['file'].dropna().tolist()
 
-    matches = []
-    for file_name in file_list:
-        if search_term.lower() in file_name.lower():
-            matches.append(file_name)
+    matches_df = df[df['file'].str.contains(search_term, case=False, na=False)]
 
-    if matches:
-        unique_writers = {}
-        for file_name in matches:
-            writer_info = df[df['file'] == file_name].iloc[0]
-            author = writer_info['author']
-            date = writer_info['date']
-            if author not in unique_writers:
-                unique_writers[author] = set()
-            unique_writers[author].add((date, file_name))
+    if not matches_df.empty:
+        unique_writers = matches_df.groupby(['author', 'date'])['file'].apply(list).reset_index()
 
         result_text = ""
-        for author, files in unique_writers.items():
-            result_text += f"{author}\n"
-            for file_info in files:
-                result_text += f"{file_info[0]} - {file_info[1]}\n"
+        for _, row in unique_writers.iterrows():
+            result_text += f"{row['author']}\n"
+            for file_name in row['file']:
+                result_text += f"{row['date']} - {file_name}\n"
             result_text += "\n"
     else:
         result_text = "No matches found\n"
@@ -289,9 +290,17 @@ if st.button("1.5 Exclude values from dataset"):
 st.header("Step 2: Search the dataset")
 search_term = st.text_input("2.1 Enter filepath substring to search for")
 
-if st.button("2.2 Click to search"):
-    st.session_state.result_text_global = perform_search(st.session_state.file_list_input, search_term)
-    st.text_area("Search Results", value=st.session_state.result_text_global, height=300)
+# Search and Cancel buttons
+col1, col2 = st.columns([1, 1])
+with col1:
+    if st.button("2.2 Click to search"):
+        st.session_state.result_text_global = perform_search(st.session_state.file_list_input, search_term)
+with col2:
+    if st.button("2.3 Cancel search"):
+        cancel_search()
+
+# Search results window
+st.text_area("Search Results", value=st.session_state.result_text_global, height=300)
 
 # Step 3: Review search results
 st.header("Step 3: Review search results")
