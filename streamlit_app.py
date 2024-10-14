@@ -272,7 +272,7 @@ exclude_values_input = st.text_input(
     ','.join(st.session_state.delete_values or st.session_state.default_values)
 )
 
-if st.button("1.4 Save new 'exclude' values"):
+if st.button("1.4 Save 'exclude' values"):
     st.session_state.delete_values = [
         value.strip() for value in exclude_values_input.split(',') if value.strip()
     ]
