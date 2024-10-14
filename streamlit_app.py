@@ -15,13 +15,6 @@ if 'result_text_global' not in st.session_state:
 if 'default_values' not in st.session_state:
     st.session_state.default_values = []
 
-if 'cancel_search' not in st.session_state:
-    st.session_state.cancel_search = False
-
-# Function to cancel the search
-def cancel_search():
-    st.session_state.cancel_search = True
-
 # Function to display help content based on uploaded files
 def open_help_window(help_type, help_files):
     help_file_names = {
@@ -42,7 +35,7 @@ def open_help_window(help_type, help_files):
                 return
         st.error(f"Help file '{help_file_names[help_type]}' not found.")
     else:
-        st.error("Please upload help files.")
+        st.error("Upload help files.")
 
 # Function to handle the exclusion of writer blocks and lines
 def exclude_items(file_list_text, delete_values):
@@ -189,19 +182,14 @@ def reorder_date_file_writer(result_text):
         sorted_result_text += file + "\n"
     return sorted_result_text
 
-# Function to perform the search with cancellation support
+# Function to perform the search
 def perform_search(file_list_text, search_term):
-    st.session_state.cancel_search = False
     lines = file_list_text.strip().split("\n")
     parsed_data = []
     current_author = None
     current_date = None
 
     for line in lines:
-        if st.session_state.cancel_search:
-            st.session_state.searching = False
-            return "Search cancelled.\n"
-
         if 'Date:' in line:
             author_date_match = re.match(r"(.+), Date: (.+)", line)
             if author_date_match:
@@ -211,17 +199,28 @@ def perform_search(file_list_text, search_term):
             parsed_data.append([current_author, current_date, line])
 
     df = pd.DataFrame(parsed_data, columns=['author', 'date', 'file'])
+    file_list = df['file'].dropna().tolist()
 
-    matches_df = df[df['file'].str.contains(search_term, case=False, na=False)]
+    matches = []
+    for file_name in file_list:
+        if search_term.lower() in file_name.lower():
+            matches.append(file_name)
 
-    if not matches_df.empty:
-        unique_writers = matches_df.groupby(['author', 'date'])['file'].apply(list).reset_index()
+    if matches:
+        unique_writers = {}
+        for file_name in matches:
+            writer_info = df[df['file'] == file_name].iloc[0]
+            author = writer_info['author']
+            date = writer_info['date']
+            if author not in unique_writers:
+                unique_writers[author] = set()
+            unique_writers[author].add((date, file_name))
 
         result_text = ""
-        for _, row in unique_writers.iterrows():
-            result_text += f"{row['author']}\n"
-            for file_name in row['file']:
-                result_text += f"{row['date']} - {file_name}\n"
+        for author, files in unique_writers.items():
+            result_text += f"{author}\n"
+            for file_info in files:
+                result_text += f"{file_info[0]} - {file_info[1]}\n"
             result_text += "\n"
     else:
         result_text = "No matches found\n"
@@ -261,19 +260,11 @@ if st.button("User IDs / writers"):
 # Step 1: Dataset and exclude values
 st.header("Step 1: Add dataset and exclude values")
 branch_name = st.text_input("1.1 Enter dataset branch name (Optional)")
-
-# File uploader for the dataset
-dataset_file = st.file_uploader("1.2 Upload a dataset", type=['txt'])
-if dataset_file is not None:
-    file_list_input = dataset_file.read().decode('utf-8')
-    st.session_state.file_list_input = file_list_input
-    st.text_area("Dataset", value=file_list_input, height=200)
-else:
-    file_list_input = st.text_area(
-        "1.2 Alternatively, paste in a dataset",
-        value=st.session_state.file_list_input,
-        height=200
-    )
+file_list_input = st.text_area(
+    "1.2 Paste in a dataset",
+    value=st.session_state.file_list_input,
+    height=200
+)
 
 # Display default delete values if available
 exclude_values_input = st.text_input(
@@ -281,7 +272,7 @@ exclude_values_input = st.text_input(
     ','.join(st.session_state.delete_values or st.session_state.default_values)
 )
 
-if st.button("1.4 Save 'exclude' values"):
+if st.button("1.4 Save new 'exclude' values"):
     st.session_state.delete_values = [
         value.strip() for value in exclude_values_input.split(',') if value.strip()
     ]
@@ -289,7 +280,7 @@ if st.button("1.4 Save 'exclude' values"):
     st.text_area("Current Exclude Values", value='\n'.join(st.session_state.delete_values), height=100)
 
 if st.button("1.5 Exclude values from dataset"):
-    updated_dataset, excluded_lines = exclude_items(st.session_state.file_list_input, st.session_state.delete_values)
+    updated_dataset, excluded_lines = exclude_items(file_list_input, st.session_state.delete_values)
     st.session_state.file_list_input = updated_dataset
     st.text_area("Updated Dataset", value=updated_dataset, height=300)
     st.text_area("Excluded Lines", value=excluded_lines, height=300)
@@ -298,17 +289,9 @@ if st.button("1.5 Exclude values from dataset"):
 st.header("Step 2: Search the dataset")
 search_term = st.text_input("2.1 Enter filepath substring to search for")
 
-# Search and Cancel buttons
-col1, col2 = st.columns([1, 1])
-with col1:
-    if st.button("2.2 Click to search"):
-        st.session_state.result_text_global = perform_search(st.session_state.file_list_input, search_term)
-with col2:
-    if st.button("2.3 Cancel search"):
-        cancel_search()
-
-# Search results window
-st.text_area("Search Results", value=st.session_state.result_text_global, height=300)
+if st.button("2.2 Click to search"):
+    st.session_state.result_text_global = perform_search(st.session_state.file_list_input, search_term)
+    st.text_area("Search Results", value=st.session_state.result_text_global, height=300)
 
 # Step 3: Review search results
 st.header("Step 3: Review search results")
