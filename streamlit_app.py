@@ -233,7 +233,7 @@ st.title("Triaging Workbench")
 
 # Upload multiple help files and default-delete-values file
 uploaded_help_files = st.file_uploader(
-    "Upload help files (txt or images) for 'triage', 'workbench', 'reorder', 'userids', and 'default-delete-values'",
+    "Upload help files",
     accept_multiple_files=True,
     type=['txt', 'png', 'jpg', 'jpeg'],
     key='help_files'
@@ -248,7 +248,7 @@ if uploaded_help_files:
             st.success(f"Default delete values loaded: {', '.join(st.session_state.default_values)}")
 
 # Help buttons in a vertical column
-st.write("## Help Section")
+st.write("## Help")
 if st.button("How to triage"):
     open_help_window("triage", uploaded_help_files)
 if st.button("How to use workbench"):
@@ -261,11 +261,19 @@ if st.button("User IDs / writers"):
 # Step 1: Dataset and exclude values
 st.header("Step 1: Add dataset and exclude values")
 branch_name = st.text_input("1.1 Enter dataset branch name (Optional)")
-file_list_input = st.text_area(
-    "1.2 To paste in a dataset, use Ctrl-V",
-    value=st.session_state.file_list_input,
-    height=200
-)
+
+# File uploader for the dataset
+dataset_file = st.file_uploader("1.2 Upload a dataset", type=['txt'])
+if dataset_file is not None:
+    file_list_input = dataset_file.read().decode('utf-8')
+    st.session_state.file_list_input = file_list_input
+    st.text_area("Dataset", value=file_list_input, height=200)
+else:
+    file_list_input = st.text_area(
+        "1.2 Alternatively, paste in a dataset",
+        value=st.session_state.file_list_input,
+        height=200
+    )
 
 # Display default delete values if available
 exclude_values_input = st.text_input(
@@ -281,7 +289,7 @@ if st.button("1.4 Save 'exclude' values"):
     st.text_area("Current Exclude Values", value='\n'.join(st.session_state.delete_values), height=100)
 
 if st.button("1.5 Exclude values from dataset"):
-    updated_dataset, excluded_lines = exclude_items(file_list_input, st.session_state.delete_values)
+    updated_dataset, excluded_lines = exclude_items(st.session_state.file_list_input, st.session_state.delete_values)
     st.session_state.file_list_input = updated_dataset
     st.text_area("Updated Dataset", value=updated_dataset, height=300)
     st.text_area("Excluded Lines", value=excluded_lines, height=300)
