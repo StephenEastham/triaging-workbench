@@ -2,7 +2,7 @@ import streamlit as st
 import pandas as pd
 import re
 
-# Initialize session state for delete values, file list input, and default delete values
+# Initialize session state variables
 if 'delete_values' not in st.session_state:
     st.session_state.delete_values = []
 
@@ -17,6 +17,9 @@ if 'default_values' not in st.session_state:
 
 if 'cancel_search' not in st.session_state:
     st.session_state.cancel_search = False
+
+if 'search_history' not in st.session_state:
+    st.session_state.search_history = []
 
 # Function to cancel the search
 def cancel_search():
@@ -44,7 +47,7 @@ def open_help_window(help_type, help_files):
     else:
         st.error("Please upload help files.")
 
-# Function to handle the exclusion of writer blocks and lines
+# Function to exclude items from the dataset based on delete values
 def exclude_items(file_list_text, delete_values):
     lines = file_list_text.strip().split("\n")
     updated_list = []
@@ -135,60 +138,6 @@ def reorder_results(result_text):
 
     return sorted_result_text
 
-# Function to reorder results by file, then date, then writer
-def reorder_file_date_writer(result_text):
-    lines = result_text.strip().split("\n")
-    writer_blocks = []
-    current_writer = None
-
-    for line in lines:
-        if line.strip() == "":
-            continue
-        if '-' not in line:
-            current_writer = line.strip()
-        else:
-            writer_blocks.append((current_writer, line.strip()))
-
-    writer_blocks.sort(key=lambda x: (x[1].split(" - ")[1], x[1].split(" - ")[0], x[0]))
-
-    sorted_result_text = ""
-    current_writer = None
-    for writer, file in writer_blocks:
-        if writer != current_writer:
-            if current_writer is not None:
-                sorted_result_text += "\n"
-            sorted_result_text += writer + "\n"
-            current_writer = writer
-        sorted_result_text += file + "\n"
-    return sorted_result_text
-
-# Function to reorder results by date, then file, then writer
-def reorder_date_file_writer(result_text):
-    lines = result_text.strip().split("\n")
-    writer_blocks = []
-    current_writer = None
-
-    for line in lines:
-        if line.strip() == "":
-            continue
-        if '-' not in line:
-            current_writer = line.strip()
-        else:
-            writer_blocks.append((current_writer, line.strip()))
-
-    writer_blocks.sort(key=lambda x: (x[1].split(" - ")[0], x[1].split(" - ")[1], x[0]), reverse=True)
-
-    sorted_result_text = ""
-    current_writer = None
-    for writer, file in writer_blocks:
-        if writer != current_writer:
-            if current_writer is not None:
-                sorted_result_text += "\n"
-            sorted_result_text += writer + "\n"
-            current_writer = writer
-        sorted_result_text += file + "\n"
-    return sorted_result_text
-
 # Function to perform the search with cancellation support
 def perform_search(file_list_text, search_term):
     st.session_state.cancel_search = False
@@ -199,7 +148,6 @@ def perform_search(file_list_text, search_term):
 
     for line in lines:
         if st.session_state.cancel_search:
-            st.session_state.searching = False
             return "Search cancelled.\n"
 
         if 'Date:' in line:
@@ -296,13 +244,23 @@ if st.button("1.5 Exclude values from dataset"):
 
 # Step 2: Search the dataset
 st.header("Step 2: Search the dataset")
-search_term = st.text_input("2.1 Enter filepath substring to search for")
 
-# Search and Cancel buttons
+# Combine the previous searches dropdown with a text input
+search_term = st.selectbox("To populate the search term box below, select a previous filepath substring", options=[""] + st.session_state.search_history)
+new_search_term = st.text_input("Enter a new filepath substring or select a previous search term in the box above", value=search_term)
+
+# Search and Cancel buttons with loading indicator
 col1, col2 = st.columns([1, 1])
 with col1:
     if st.button("2.2 Click to search"):
-        st.session_state.result_text_global = perform_search(st.session_state.file_list_input, search_term)
+        with st.spinner("Searching..."):
+            search_result = perform_search(st.session_state.file_list_input, new_search_term)
+            if st.session_state.cancel_search:
+                new_search_term = f"{new_search_term} [cancelled]"
+            if new_search_term not in st.session_state.search_history:
+                st.session_state.search_history.append(new_search_term)
+            st.session_state.result_text_global = search_result
+
 with col2:
     if st.button("2.3 Cancel search"):
         cancel_search()
